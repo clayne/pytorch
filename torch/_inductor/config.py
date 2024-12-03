@@ -825,7 +825,7 @@ class cpp:
     simdlen: Optional[int] = None
     min_chunk_size = int(os.environ.get("TORCHINDUCTOR_CPP_MIN_CHUNK_SIZE", "4096"))
 
-    cxx: Tuple[None, Literal["g++-12", "g++-11", "g++-10", "clang++", "g++.par"]] = (
+    cxx: Tuple[None, str] = (
         None,  # download gcc12 from conda-forge if conda is installed
         os.environ.get("CXX", "clang++" if sys.platform == "darwin" else "g++"),
     )  # type: ignore[assignment]
@@ -1024,7 +1024,7 @@ class triton:
     # 1/True: enable, use tuning to pick between different subkernels
     # 2: enable, force using persistent reduction (for debugging)
     # 3: enable, force using non-persistent reduction (for debugging)
-    multi_kernel: Literal["0", "1", "2", "3", "False", "True"] = int(
+    multi_kernel: Literal[0, 1, 2, 3, "False", "True"] = int(
         os.environ.get("TORCHINDUCTOR_MULTI_KERNEL", "0")
     )  # type: ignore[assignment]
 

@@ -632,7 +632,8 @@ class ConfigFuzzer:
         if len(failing_config) <= 1:
             return dict(failing_config) if test(failing_config).failing() else None
 
-        # Shuffling helps the worst case
+        # I think shuffling helps the worst case.
+        # For example, say (a, b) is the failure and a, b end up on opposite ends of the initial list, if two configs end up at
         random.shuffle(failing_config)
 
         mid = len(failing_config) // 2
