@@ -26,7 +26,19 @@ from torch._inductor.scheduler import BaseSchedulerNode
 from torch.utils._config_module import _ConfigEntry, ConfigModule
 
 
+def is_type(type_hint, comp_type) -> bool:  # type: ignore[no-untyped-def]
+    """
+    Determines if type_hint is comp_type. There are some type annotations that this doesn't work for.
+    I think it's because some Type annotations are Type Objects and some are Special Forms, but not sure.
+    There's definite room for improvement to make this more general for someone who deeply understands
+    Python types.
+    """
+    return type_hint is comp_type or get_origin(type_hint) is comp_type
+
 def is_optional_type(type_hint) -> bool:  # type: ignore[no-untyped-def]
+    """
+    Special case of is_type.
+    """
     origin = get_origin(type_hint)
 
     if origin is Union:
@@ -36,51 +48,73 @@ def is_optional_type(type_hint) -> bool:  # type: ignore[no-untyped-def]
     return False
 
 
-# callable types are messed up
 def is_callable_type(type_hint) -> bool:  # type: ignore[no-untyped-def]
+    """
+    Special Case of is_type.
+    """
     return type_hint.__name__ == "Callable"
 
 
-def is_type(type_hint, comp_type) -> bool:  # type: ignore[no-untyped-def]
-    return type_hint is comp_type or get_origin(type_hint) is comp_type
 
 
 class DummyPass(CustomGraphPass):
+    """
+    A Dummy pass to be used by ConfigFuzzer
+    """
     def __call__(self, graph: torch.fx.graph.Graph) -> None:
-        """
-        Implementation of the custom pass.
-        """
         return None
 
     def uuid(self) -> Optional[Any]:
-        """
-        Return an ID to uniquely identify your custom pass implementation. Return None
-        to skip inductor code caching entirely.
-        """
         return None
 
+T = TypeVar("T")
+class TypeExemplars:
+    """
+    This class returns examples of a Type, given its class name.
+    """
+    TYPE_EXEMPLARS: dict[str, Any] = {
+        CustomGraphPass.__name__: DummyPass(),
+        torch.fx.graph.Graph.__name__: torch.fx.graph.Graph(),
+        BaseSchedulerNode.__name__: BaseSchedulerNode(None),  # type: ignore[arg-type]
+    }
+    def example(t: Type[T]) -> Optional[T]:
+        """
+        Return an example of a class.
+        """
+        return TypeExamplars.TYPE_EXEMPLARS.get([t.__name__], None)
 
-TYPE_EXEMPLARS: dict[str, Any] = {
-    CustomGraphPass.__name__: DummyPass(),
-    torch.fx.graph.Graph.__name__: torch.fx.graph.Graph(),
-    BaseSchedulerNode.__name__: BaseSchedulerNode(None),  # type: ignore[arg-type]
-}
 
 
 class Status(Enum):
+    """
+    The Status return value enum for Config Fuzzer
+    """
+    # ConfigFuzzer skipped the test
     SKIPPED = "skipped"
+    # ConfigFuzzer compiled and ran the test and function it passed.
     PASSED = "passed"
-    FAILED_RUN_EXCEPTION = "failed_run_exception"
-    FAILED_RUN_RETURN = "failed_run_return"
+    # ConfigFuzzer failed to compile the test function
     FAILED_COMPILE = "failed_compile"
+    # ConfigFuzzer compiled the test function and it raised an exception
+    FAILED_RUN_EXCEPTION = "failed_run_exception"
+    # ConfigFuzzer compiled the test function, but the return value indicated that the compiled value didn't match the
+    # value from eager (or however else you set up the comparison in the test function)
+    FAILED_RUN_RETURN = "failed_run_return"
 
     def failing(self) -> bool:
-        return self == Status.FAILED_RUN or self == Status.FAILED_COMPILE
+        """
+        Convenience method to check whether these status represent failure.
+        """
+        return self == Status.FAILED_COMPILE or self == Status.FAILED_RUN_EXCEPTION or self == Status.FAILED_RUN_RETURN
 
 
 class SamplingMethod(Enum):
     """
-    This class handles sampling values of a type assign to configs.
+    This class handles the process of assigning concrete values to type annotations. So a type annotation of
+    ```python
+    foo: Optional[int] = None
+    ```
+    Will be assigned an int if the dispatch function gets TOGGLE, or a 50/50 split between an int and None if it gets RANDOM.
     """
 
     TOGGLE = "TOGGLE"  # toggle to the opposite value
@@ -90,7 +124,9 @@ class SamplingMethod(Enum):
     def _generate_value_for_type(
         random_sample: bool, type_hint: Type[Any], default: Any
     ) -> Any:
-        """this setting will use randomness too, but if there's a sensible 'toggle', it will use that"""
+        """
+        Generates a value of a type based on the setting.
+        """
         if type_hint == bool:
             return random.choice([True, False]) if random_sample else not default
         elif type_hint == int:
@@ -246,6 +282,9 @@ class SamplingMethod(Enum):
 
     @staticmethod
     def dispatch(sm: "SamplingMethod") -> Callable[[Type[Any], Any], Any]:
+        """
+        Returns a function that will generate values from a type, based on the SamplingMethod passed in.
+        """
         if sm == SamplingMethod.RANDOM:
             return partial(SamplingMethod._generate_value_for_type, True)
         elif sm == SamplingMethod.TOGGLE:
@@ -255,15 +294,38 @@ class SamplingMethod(Enum):
 
 
 class Default:
+    """
+    Singleton default object that will cause the ConfigFuzzer to always use the default value set in the config.
+    """
     pass
 
 
 DEFAULT = Default()
 
+# The combination of config settings being set (based on their strings)
 ComboType = Tuple[str, ...]
-ResultType = Dict[ComboType, Status]
+class ResultType:
+    """
+    The mapping of the combo strings to the result status after running the config fuzzer.
+    """
+    _vals: Dict[ComboType, Status]
+    def __init__(self):
+        self._vals = {}
+    def set(
+        self, combo: ComboType, status: Status
+    ) -> None:
+        combo = tuple(sorted(combo))
+        self._vals[combo] = status
+
+    def lookup(self, combo: ComboType) -> Optional[Status]:
+        combo = tuple(sorted(combo))
+        return self._vals.get(combo, None)
+
+# Type that maps config strings to their default value
 ConfigType = Dict[str, Any]
+# Callable that returns a tupl
 FactoryOutputType = Callable[[], bool | Tuple[Any]]
+# input function factory
 FactoryType = Callable[[], FactoryOutputType]
 
 
@@ -277,8 +339,23 @@ class ConfigFuzzer:
     fuzz_with_bisect is recommended, but fuzz_n_tuple can give you peace of mind that a new config will compose with every other config.
 
     # Example usage:
+
+    ```python
     import torch._inductor.config as cfg
 
+    def create_simple_test_model_gpu() -> FactoryOutputType:
+        batch_size = 32
+        seq_length = 50
+        hidden_size = 768
+
+        def test_fn() -> bool:
+            inp = torch.randn(batch_size, seq_length, hidden_size, device="cuda")
+            weight = torch.randn(hidden_size, hidden_size, device="cuda")
+            matmul_output = inp @ weight
+            final_output = torch.nn.LayerNorm(hidden_size, device="cuda")(matmul_output)
+            return True
+
+        return test_fn
     fuzzer = ConfigFuzzer(cfg, create_simple_test_model_gpu, seed=2)
 
     # Test every pair of configs:
@@ -291,13 +368,13 @@ class ConfigFuzzer:
 
     # reproduce a failing config
     fuzzer.reproduce([{"triton.autotune_pointwise": ..., "coordinate_descent_tuning": ...}])
+    ```
 
-    # Known failures on inductor config:
+    The list of known failures on inductor config are:
     cpp_wrapper, triton_debug_sync_graph
     cpp_wrapper, triton_debug_sync_kernel
     cpp_wrapper, disable_cpp_codegen
     combo_kernels, benchmark_combo_kernel, profile_bandwidth, profile_bandwidth_regex
-
     """
 
     sample: Callable[[Type[Any], Any], Any]
@@ -391,15 +468,6 @@ class ConfigFuzzer:
         for field_name, field_obj in self.fields.items():
             self._set_config(field_name, field_obj.default)
 
-    def _set_status(
-        self, results: ResultType, combo: ComboType, status: Status
-    ) -> None:
-        combo = tuple(sorted(combo))
-        results[combo] = status
-
-    def _lookup_status(self, results: ResultType, combo: ComboType) -> Optional[Status]:
-        combo = tuple(sorted(combo))
-        return results[combo] if combo in results else None
 
     def new_config(self) -> ConfigType:
         """creates a new config from the default"""
@@ -409,9 +477,20 @@ class ConfigFuzzer:
         }
         return ret
 
-    def _combo_run_common(self, results: ResultType, combo: ComboType) -> None:
+
+    def reproduce(self, configs: List[ConfigType]) -> ResultType:
+        """entrypoint to reproduce any failure"""
+        results: ResultType = {}
+        for conf in configs:
+            print(f"Starting repro of {conf}")
+            new_config = self.new_config()
+            new_config.update(conf)
+            self.test_config(results, new_config)
+        return results
+
+    def _fuzz_helper(self, results: ResultType, combo: ComboType) -> None:
         print(combo)
-        if self._lookup_status(results, combo):
+        if results.lookup(combo):
             # we already processed this config
             return
 
@@ -428,20 +507,10 @@ class ConfigFuzzer:
             value = self.sample(field.value_type, field.default)
             config[field_name] = value
         if skip:
-            self._set_status(results, combo, Status.SKIPPED)
+            results.set(combo, Status.SKIPPED)
             return
 
         self.test_config(results, config)
-
-    def reproduce(self, configs: List[ConfigType]) -> ResultType:
-        """entrypoint to reproduce any failure"""
-        results: ResultType = {}
-        for conf in configs:
-            print(f"Starting repro of {conf}")
-            new_config = self.new_config()
-            new_config.update(conf)
-            self.test_config(results, new_config)
-        return results
 
     def fuzz_n_tuple(self, n: int, max_combinations: int = 1000) -> ResultType:
         """
@@ -454,7 +523,7 @@ class ConfigFuzzer:
         random.seed(self.seed)
 
         for combo in itertools.combinations(self.fields, n):
-            self._combo_run_common(results, combo)
+            self._fuzz_helper(results, combo)
             max_combinations -= 1
             if max_combinations <= 0:
                 print("Reached maximum combinations limit")
@@ -480,64 +549,57 @@ class ConfigFuzzer:
         raise TimeoutError("Test execution timed out")
 
     def test_config(self, results: ResultType, config: ConfigType) -> Status:
-        signal.signal(signal.SIGALRM, self.timeout_handler)
-        signal.alarm(self.test_timeout)
         """
         Tests a config
         """
+        signal.signal(signal.SIGALRM, self.timeout_handler)
+        signal.alarm(self.test_timeout)
         print(f"Testing config {config}")
         config_tuple = tuple(config.keys())
-        if ret := self._lookup_status(results, config_tuple):
+        if ret := results.lookup(config_tuple):
             return ret
         torch._dynamo.reset()
         test_model_fn = self.test_model_fn_factory()
 
-        def set_config():
+        def compile_with_options(test_fn):
+            self._reset_configs()
             for name, value in config.items():
                 self._set_config(name, value)
-
-        def compile_with_options(test_fn):
-            if self.config_module.__name__ == "torch._inductor.config":
-                return torch.compile(options=config)(test_model_fn)
-            self._reset_configs()
-            set_config()
             comp = torch.compile()(test_model_fn)
-
-        def run_eager(test_fn):
-            if self.config_module.__name__ == "torch._inductor.config":
-                # we didn't set config earlier for compile in inductor
-                set_config()
-            return test_fn()
 
         def print_config():
             for field, value in config.items():
                 print(f"{field} = {value}")
 
-        def handle_return(message, return_status, print_traceback):
+        def get_error_info(exc: Exception) -> Dict[str, Any]:
+            return {
+                "exception": str(exc),
+                "traceback": traceback.format_exc(),
+                "config": config.copy(),
+            }
+
+        def handle_return(message: str, return_status: Status, print_traceback: bool, exc: Optional[Exception]) -> Status:
             print(f"{message} with config combination:")
             print_config(config)
+            if exc:
+                self.detailed_results[config_tuple] = get_error_info(exc)
             if print_traceback:
                 traceback.print_exc()
-            self._set_status(results, config_tuple, return_status)
+            results.set(config_tuple, return_status)
             return return_status
+
 
         # try compilation
         try:
             comp = compile_with_options(test_model_fn)
         except Exception as exc:  # noqa: E722
-            error_info = {
-                "exception": str(exc),
-                "traceback": traceback.format_exc(),
-                "config": config.copy(),
-            }
-            self.detailed_results[config_tuple] = error_info
-            return handle_return("Exception compiling", Status.FAILED_COMPILE, True)
+            return handle_return("Exception compiling", Status.FAILED_COMPILE, True, exc)
 
         # try running compiled
         try:
             success = comp()
-        except Exception:  # noqa: E722
-            return handle_return("Exception running", Status.FAILED_RUN_EXCEPTION, True)
+        except Exception as exc:  # noqa: E722
+            return handle_return("Exception running compiled", Status.FAILED_RUN_EXCEPTION, True, exc)
 
         # bool return value means don't compare with eager
         if type(success) is bool:
@@ -553,14 +615,14 @@ class ConfigFuzzer:
         elif type(success) is tuple:
             try:
                 eager_results = test_model_fn()
-            except Exception:  # noqa: E722
+            except Exception as exc:  # noqa: E722
                 return handle_return(
-                    "Eager exception", Status.FAILED_RUN_EXCEPTION, True
+                    "Eager exception", Status.FAILED_RUN_EXCEPTION, True, exc
                 )
             for er, cr in zip(eager_results, success):
                 if not torch.isclose(er, cr):
                     return handle_return(
-                        "Results don't match eager", Status.FAILED_RUN_RETURN, False
+                        "Results don't match eager", Status.FAILED_RUN_RETURN, False, None
                     )
             ret = Status.PASSED
             self._set_status(results, config_tuple, ret)
@@ -632,8 +694,6 @@ class ConfigFuzzer:
         if len(failing_config) <= 1:
             return dict(failing_config) if test(failing_config).failing() else None
 
-        # I think shuffling helps the worst case.
-        # For example, say (a, b) is the failure and a, b end up on opposite ends of the initial list, if two configs end up at
         random.shuffle(failing_config)
 
         mid = len(failing_config) // 2
@@ -669,15 +729,18 @@ class ConfigFuzzer:
 
 
 def visualize_results(
-    n: int, status: ResultType, filename: str = "results.html"
+    n: int, results: ResultType, filename: str = "results.html"
 ) -> None:
-    # TODO Support more dimensions
+    """
+    Creates an HTML document representing the results of running the fuzzer with fuzz_n_tuple, with n = 2.
+    """
+    # TODO support more dimensions
     assert n == 2
-    assert len(status) > 0
+    assert len(results) > 0
 
     # Create a dictionary for quick lookup of status
     input_set = set({})
-    for key in status.keys():
+    for key in results.keys():
         input_set.add(key[0])
         input_set.add(key[1])
     input_list = sorted(input_set)
@@ -736,8 +799,7 @@ def visualize_results(
             # Determine the status class for the cell
             status_class = ""
             status_val = ""
-            if (row_name, col_name) in status:
-                status_enum = status[(row_name, col_name)]
+            if status_enum in results:
                 if status_enum == Status.SKIPPED:
                     status_class = "skipped"
                     status_val = "-"
@@ -766,9 +828,6 @@ def visualize_results(
 
     with open(filename, "w") as file:
         file.write(html_content)
-
-    print(f"HTML file '{filename}' has been generated.")
-
 
 if __name__ == "__main__":
     import argparse
