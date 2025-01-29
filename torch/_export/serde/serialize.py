@@ -15,7 +15,7 @@ import re
 import traceback
 import typing
 
-from collections import OrderedDict
+from collections import OrderedDict, namedtuple
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
@@ -455,6 +455,7 @@ class GraphModuleSerializer(metaclass=Final):
         self.module_call_graph = module_call_graph
         self.custom_objs: dict[str, torch._C.ScriptObject] = {}
         self.duplicate_getitem_nodes: dict[str, str] = {}
+        self.treespec_namedtuple_fields: dict[str, list[str]] = {}
 
     @contextmanager
     def save_graph_state(self):
@@ -1176,6 +1177,30 @@ class GraphModuleSerializer(metaclass=Final):
         else:
             raise AssertionError("TODO")
 
+    def serialize_treespec(self, treespec):
+        # We want to additionally save all the field names of the namedtuples in
+        # case users want to check that the treespec types are equivalent
+        def store_namedtuple_fields(ts):
+            if ts.type is None:
+                return
+            if ts.type == namedtuple:
+                serialized_type_name = pytree.SUPPORTED_SERIALIZED_TYPES[ts.context].serialized_type_name
+                field_names = self.treespec_namedtuple_fields.get(serialized_type_name, ts.context._fields)
+                if field_names != ts.context._fields:
+                    raise SerializeError(
+                        f"The given TreeSpec's namedtuple type {ts.context} "
+                        f"was found to have field names {ts.context._fields} "
+                        f"but somehow previously was found to have field names {field_names}."
+                    )
+                self.treespec_namedtuple_fields[serialized_type_name] = field_names
+
+            for child in ts.children_specs:
+                store_namedtuple_fields(child)
+
+        serialized_treespec = treespec_dumps(treespec, TREESPEC_VERSION)
+        store_namedtuple_fields(treespec)
+        return serialized_treespec
+
     def serialize_module_call_signature(
         self, module_call_signature: ep.ModuleCallSignature
     ) -> ModuleCallSignature:
@@ -1187,8 +1212,8 @@ class GraphModuleSerializer(metaclass=Final):
             outputs=[
                 self.serialize_argument_spec(x) for x in module_call_signature.outputs
             ],
-            in_spec=treespec_dumps(module_call_signature.in_spec, TREESPEC_VERSION),
-            out_spec=treespec_dumps(module_call_signature.out_spec, TREESPEC_VERSION),
+            in_spec=self.serialize_treespec(module_call_signature.in_spec),
+            out_spec=self.serialize_treespec(module_call_signature.out_spec),
             forward_arg_names=names if (names := module_call_signature.forward_arg_names) else None
         )
 
@@ -1432,6 +1457,8 @@ class GraphModuleSerializer(metaclass=Final):
                 raise SerializeError(
                     f"Failed to serialize custom metadata for graph with error {e}"
                 ) from e
+
+        ret["treespec_namedtuple_fields"] = json.dumps(self.treespec_namedtuple_fields)
 
         return ret
 
@@ -2091,6 +2118,8 @@ class GraphModuleDeserializer(metaclass=Final):
             meta = {}
             if custom := serialized_graph_module.metadata.get("custom"):
                 meta["custom"] = json.loads(custom)
+            if namedtuple_fields := serialized_graph_module.metadata.get("treespec_namedtuple_fields"):
+                meta["treespec_namedtuple_fields"] = json.loads(namedtuple_fields)
             graph_module.meta = meta
             return GraphModuleDeserializer.Result(
                 graph_module=graph_module,
