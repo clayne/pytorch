@@ -2188,7 +2188,10 @@ class FakeTensorMode(TorchDispatchMode):
                     func, real_flat_args, args_spec
                 )
 
-            real_out = func(*real_args, **real_kwargs)
+            try:
+                real_out = func(*real_args, **real_kwargs)
+            except Exception as exc:
+                log.debug("real-tensor fallback failed for %s: %s; silently ignoring", func, exc)
 
             if not is_builtin:
                 mutation_checker.check()  # type: ignore[possibly-undefined]
