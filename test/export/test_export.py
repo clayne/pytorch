@@ -2350,6 +2350,59 @@ graph():
         ):
             export(Foo(), inputs, dynamic_shapes=shapes)
 
+    @testing.expectedFailureSerDer  # TODO(pianpwk)
+    @testing.expectedFailureCppSerDes
+    @testing.expectedFailureSerDerNonStrict
+    def test_mark_unbacked(self):
+        # test size = 1 inputs, broadcasting with static dims, nested inputs
+        class Foo(torch.nn.Module):
+            def forward(self, x, y):
+                return x["data"][0] + y
+
+        inputs = (
+            {
+                "data": [torch.randn(1, 1)],
+            },
+            torch.randn(1, 1),
+        )
+        shapes = {
+            "x": {
+                "data": [(Dim.UNBACKED, Dim.UNBACKED)],
+            },
+            "y": (None, Dim.AUTO),
+        }
+        ep = export(Foo(), inputs, dynamic_shapes=shapes)
+        ep.module()({"data": [torch.randn(4, 4)]}, torch.randn(1, 1))
+
+        # test complex guards - successful but emits too many runtime asserts
+        class Bar(torch.nn.Module):
+            def forward(self, x):
+                return x.reshape([x.shape[1] - 1, -1])
+
+        inputs = (torch.randn(6, 4, 2),)
+        shapes = {"x": [Dim.UNBACKED] * 3}
+        ep = export(Bar(), inputs, dynamic_shapes=shapes)
+        ep.module()(torch.randn(12, 4, 2))
+        ep.module()(torch.randn(10, 6, 2))
+
+    def test_mark_unbacked_0_1(self):
+        class Foo(torch.nn.Module):
+            def forward(self, x):
+                return x * 2
+
+        inps = (torch.randn(1, 0, 4),)
+        shapes = {
+            "x": (
+                Dim.UNBACKED,
+                Dim.UNBACKED,
+                Dim.UNBACKED,
+            ),
+        }
+        ep = export(Foo(), inps, dynamic_shapes=shapes)
+        ep.module()(torch.randn(1, 1, 0))
+        ep.module()(torch.randn(5, 5, 5))
+        ep.module()(torch.randn(0, 0, 1))
+
     def test_torch_fn(self):
         class M1(torch.nn.Module):
             def __init__(self) -> None:

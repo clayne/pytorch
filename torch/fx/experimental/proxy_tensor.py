@@ -1183,7 +1183,8 @@ def wrap_key(
         assert len(flat_proxies) == len(flat_tensors)
         with disable_proxy_modes_tracing() as m:
             assert isinstance(m, ProxyTorchDispatchMode)
-            track_tensor_tree(flat_tensors, flat_proxies, constant=None, tracer=tracer)
+            for flat_tensor, flat_proxy in zip(flat_tensors, flat_proxies):
+                track_tensor_tree(flat_tensor, flat_proxy, constant=None, tracer=tracer)
 
         def get_tensor_proxy_slot(t: Tensor) -> Union[Tensor, Proxy]:
             return get_proxy_slot(t, tracer, t, lambda x: x.proxy)
