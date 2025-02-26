@@ -690,7 +690,7 @@ def _export_to_torch_ir(
                 ctx = _wrap_submodules(  # type: ignore[assignment]
                     f, preserve_module_call_signature, module_call_specs
                 )
-            with ctx, _ignore_backend_decomps():
+            with ctx, _ignore_backend_decomps(), _compiling_state_context():
                 gm_torch_level, _ = torch._dynamo.export(
                     f,
                     dynamic_shapes=dynamic_shapes,  # type: ignore[arg-type]

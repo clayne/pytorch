@@ -4418,7 +4418,13 @@ class ShapeEnv:
         if dynamic_dim in (DimDynamic.SIZE_LIKE_UNBACKED, DimDynamic.OBLIVIOUS_SIZE):
             out = self.create_unbacked_symint(source).node.expr
             self._constrain_range_for_size(out)
-            self.set_unbacked_var_to_val(out, val)
+            if (
+                torch.compiler.is_exporting()
+                and dynamic_dim == DimDynamic.SIZE_LIKE_UNBACKED
+            ):
+                # export can't graph break, and we're interpreting user intention as opting
+                # into "don't 0/1 specialize", not "no guards on this symbol"
+                self.set_unbacked_var_to_val(out, val)
             if isinstance(symbolic_context, StatefulSymbolicContext) and source_name:
                 symbolic_context.shape_env_to_source_to_symbol_cache[id(self)][
                     source_name

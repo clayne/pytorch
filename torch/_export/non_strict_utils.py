@@ -17,7 +17,7 @@ from torch._dynamo.source import (
 from torch._dynamo.variables.builder import TrackedFake
 from torch._export.passes.add_runtime_assertions_for_constraints_pass import InputDim
 from torch._export.passes.lift_constants_pass import ConstantAttrMap
-from torch._export.utils import _fakify_params_buffers
+from torch._export.utils import _compiling_state_context, _fakify_params_buffers
 from torch._guards import Source
 from torch._library.fake_class_registry import FakeScriptObject
 from torch._subclasses.fake_tensor import FakeTensorMode
@@ -205,7 +205,7 @@ def make_fake_inputs(
             "please initialize it like: FakeTensorMode(shape_env=ShapeEnv(tracked_fakes=[]))"
         )
 
-    with fake_mode:
+    with fake_mode, _compiling_state_context():
         # FIXME(ycao) ScriptMethod doesn't have signature, I am using an empty one to unblock
         if not _is_torch_jit_trace:
             original_signature = inspect.signature(nn_module.forward)
