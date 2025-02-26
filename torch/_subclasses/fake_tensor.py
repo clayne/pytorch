@@ -2190,7 +2190,7 @@ class FakeTensorMode(TorchDispatchMode):
 
             try:
                 real_out = func(*real_args, **real_kwargs)
-            except (ZeroDivisionError,) as exc:
+            except ZeroDivisionError as exc:
                 # we shouldn't broadly catch all errors here;
                 # some come from real-kernel mutation/aliasing checks we want to run.
                 # add more exception types as needed.
