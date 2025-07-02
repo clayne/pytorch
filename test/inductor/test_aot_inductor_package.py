@@ -15,7 +15,8 @@ from typing import Callable
 from parameterized import parameterized_class
 from test_static_linkage_utils import (
     get_static_linkage_main_cpp_file,
-    get_static_linkage_makelist_file,
+    get_static_linkage_makelist_file_cpu,
+    get_static_linkage_makelist_file_cuda,
 )
 
 import torch
@@ -392,8 +393,6 @@ class TestAOTInductorPackage(TestCase):
     @skipIfRocm  # doesn't support multi-arch binary
     @skipIfXpu  # doesn't support multi-arch binary
     def test_run_static_linkage_model(self):
-        if self.device != GPU_TYPE:
-            raise unittest.SkipTest("Only meant to test GPU_TYPE")
         self.check_package_cpp_only()
 
         class Model1(torch.nn.Module):
@@ -405,12 +404,12 @@ class TestAOTInductorPackage(TestCase):
                 return x - y
 
         example_inputs = (
-            torch.randn(10, 10, device="cuda"),
-            torch.randn(10, 10, device="cuda"),
+            torch.randn(10, 10, device=self.device),
+            torch.randn(10, 10, device=self.device),
         )
 
-        model1 = Model1().to("cuda")
-        model2 = Model2().to("cuda")
+        model1 = Model1().to(self.device)
+        model2 = Model2().to(self.device)
 
         models = [model1, model2]
 
@@ -421,6 +420,7 @@ class TestAOTInductorPackage(TestCase):
         ):
             for i in range(2):
                 model = models[i]
+                # TODO: should be done through _ExportPackage
                 ep = torch.export.export(model, example_inputs)
 
                 package_path = torch._inductor.aoti_compile_and_package(
@@ -441,7 +441,10 @@ class TestAOTInductorPackage(TestCase):
             with open(Path(tmp_dir) / "main.cpp", "w") as f:
                 f.write(file_str)
 
-            cmake_file_str = get_static_linkage_makelist_file()
+            if self.device == GPU_TYPE:
+                cmake_file_str = get_static_linkage_makelist_file_cuda()
+            else:
+                cmake_file_str = get_static_linkage_makelist_file_cpu()
             with open(Path(tmp_dir) / "CMakeLists.txt", "w") as f:
                 f.write(cmake_file_str)
 
@@ -454,8 +457,11 @@ class TestAOTInductorPackage(TestCase):
                 cwd=build_path,
                 env=custom_env,
             )
-            subprocess.run(["make"], cwd=build_path)
-            subprocess.run(["./main", f"{tmp_dir}/"], cwd=build_path, check=True)
+
+            subprocess.run(["make"], cwd=build_path, check=True)
+            subprocess.run(
+                ["./main", f"{tmp_dir}/", self.device], cwd=build_path, check=True
+            )
 
     def test_metadata(self):
         class Model(torch.nn.Module):

@@ -1293,6 +1293,7 @@ def main() -> None:
         "include/**/*.hpp",
         "include/*.cuh",
         "include/**/*.cuh",
+        "csrc/inductor/aoti_runtime/model.h",
         "_inductor/codegen/*.h",
         "_inductor/codegen/aoti_runtime/*.h",
         "_inductor/codegen/aoti_runtime/*.cpp",

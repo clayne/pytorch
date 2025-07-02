@@ -60,8 +60,9 @@ using RAIIDataPtr = std::unique_ptr<void, std::function<void(void*)>>;
 
 #ifdef USE_CUDA
 
+// NOLINTNEXTLINE(clang-diagnostic-unneeded-internal-declaration)
 RAIIDataPtr RAII_gpuMalloc(size_t num_bytes) {
-  void* data_ptr;
+  void* data_ptr = nullptr;
   AOTI_RUNTIME_DEVICE_CHECK(cudaMalloc((void**)&data_ptr, num_bytes));
   auto deleter = [](void* ptr) { AOTI_RUNTIME_DEVICE_CHECK(cudaFree(ptr)); };
   return RAIIDataPtr(data_ptr, deleter);
@@ -191,7 +192,7 @@ class AOTInductorModelBase {
       auto code = cudaEventDestroy(*run_finished_);
       if (code != cudaSuccess) {
         std::cerr << "Failed to destroy CUDA event in AOTInductor model: "
-                  << cudaGetErrorString(code) << std::endl;
+                  << cudaGetErrorString(code) << "\n";
       }
     }
 #endif // USE_CUDA
@@ -220,7 +221,7 @@ class AOTInductorModelBase {
       AOTIProxyExecutorHandle proxy_executor) {
 #ifdef USE_CUDA
     if (!run_finished_) {
-      cudaEvent_t run_finished;
+      cudaEvent_t run_finished = nullptr;
       AOTI_RUNTIME_DEVICE_CHECK(cudaEventCreate(&run_finished));
       run_finished_.emplace(run_finished);
     }
@@ -271,7 +272,7 @@ class AOTInductorModelBase {
       bool initialization = false) {
 #ifdef USE_CUDA
     if (!run_finished_) {
-      cudaEvent_t run_finished;
+      cudaEvent_t run_finished = nullptr;
       AOTI_RUNTIME_DEVICE_CHECK(cudaEventCreate(&run_finished));
       run_finished_.emplace(run_finished);
     }

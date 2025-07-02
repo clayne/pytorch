@@ -4,7 +4,6 @@ from torch.testing._internal.common_utils import run_tests
 
 def get_static_linkage_main_cpp_file():
     return """
-
 #include <dlfcn.h>
 #include <iostream>
 #include <memory>
@@ -28,19 +27,19 @@ using torch::aot_inductor::ConstantMap;
 int main(int argc, char* argv[]) {
   if (argc < 2) {
     std::cerr
-        << "Usage: ./main <path>"
+        << "Usage: ./main <path> <device>"
         << std::endl;
     return 1;
   }
   std::string path = argv[1];
+  std::string device_str = argv[2];
   try {
-    // Create CUDA device
-    torch::Device device(torch::kCUDA);
+    torch::Device device(device_str);
 
-    // Create two input tensors (10x10) on CUDA
+    // Create two input tensors (10x10)
     auto tensor1 = torch::ones({10, 10}, device);
     auto tensor2 = torch::ones({10, 10}, device);
-    // Create two input tensors (10x10) on CUDA
+    // Create two input tensors (10x10)
     auto tensor3 = torch::ones({10, 10}, device);
     auto tensor4 = torch::ones({10, 10}, device);
 
@@ -76,8 +75,8 @@ int main(int argc, char* argv[]) {
     model2->load_constants();
 
     // Run the model
-    CUstream_st *stream1 = nullptr;
-    CUstream_st *stream2 = nullptr;
+    torch::aot_inductor::DeviceStreamType stream1 = nullptr;
+    torch::aot_inductor::DeviceStreamType stream2 = nullptr;
     model1->run(&input_handles1[0], &output_handle1, stream1, nullptr);
     model2->run(&input_handles2[0], &output_handle2, stream2, nullptr);
 
@@ -104,10 +103,11 @@ int main(int argc, char* argv[]) {
     return 1;
   }
 }
+
 """
 
 
-def get_static_linkage_makelist_file():
+def get_static_linkage_makelist_file_cuda():
     return """
 cmake_minimum_required(VERSION 3.10)
 project(TestProject)
@@ -129,7 +129,28 @@ target_link_libraries(main PRIVATE torch cuda
                     ${CUDA_LIBRARIES}
                     Plus
                     Minus)
-    """
+"""
+
+
+def get_static_linkage_makelist_file_cpu():
+    return """
+cmake_minimum_required(VERSION 3.10)
+project(TestProject)
+
+set(CMAKE_CXX_STANDARD 17)
+
+find_package(Torch REQUIRED)
+
+add_subdirectory(Plus.wrapper/data/aotinductor/model/)
+add_subdirectory(Minus.wrapper/data/aotinductor/model/)
+
+# Create executable
+add_executable(main main.cpp)
+
+target_link_libraries(main PRIVATE torch
+                    Plus
+                    Minus)
+"""
 
 
 if __name__ == "__main__":
