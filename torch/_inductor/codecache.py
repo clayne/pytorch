@@ -1765,13 +1765,22 @@ class AotCodeCompiler:
             # to link statically, we also need a header file
             with open(
                 os.path.join(
-                    os.path.dirname(__file__), "codegen", "aoti_runtime", "model.h"
+                    os.path.dirname(os.path.dirname(__file__)),
+                    "csrc",
+                    "inductor",
+                    "aoti_runtime",
+                    "model.h",
                 )
             ) as f:
                 class_name = f"AOTInductorModel{model_class_name}"
                 header_code = f.read()
-                header_code = header_code.replace(
-                    "AOTInductorModelClassNamePlaceholder", class_name
+
+                # we replace like this to avoid replacing
+                # AOTInductorModelBase and AOTInductorModelKernelsBase
+                header_code = (
+                    header_code.replace("<AOTInductorModel>", f"<{class_name}>")
+                    .replace("AOTInductorModel(", f"{class_name}(")
+                    .replace("AOTInductorModel :", f"{class_name} :")
                 )
                 _, header_path = write(
                     header_code,
