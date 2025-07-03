@@ -188,14 +188,11 @@ def forward(self, a__1):
 
 def forward(self, a__1):
     clone = torch.ops.aten.clone.default(a__1);  a__1 = None
-    slice_1 = torch.ops.aten.slice.Tensor(clone, 0, 0, 9223372036854775807)
-    select = torch.ops.aten.select.int(slice_1, 1, 1);  slice_1 = None
+    select = torch.ops.aten.select.int(clone, 1, 1)
     select_1 = torch.ops.aten.select.int(select, 0, 1);  select = None
     add = torch.ops.aten.add_.Tensor(select_1, 1);  select_1 = add = None
-    slice_2 = torch.ops.aten.slice.Tensor(clone, 0, 0, 9223372036854775807)
-    select_2 = torch.ops.aten.select.int(slice_2, 1, 1);  slice_2 = select_2 = None
-    slice_3 = torch.ops.aten.slice.Tensor(clone, 0, 0, 9223372036854775807)
-    select_3 = torch.ops.aten.select.int(slice_3, 1, 1);  slice_3 = None
+    select_2 = torch.ops.aten.select.int(clone, 1, 1);  select_2 = None
+    select_3 = torch.ops.aten.select.int(clone, 1, 1)
     select_4 = torch.ops.aten.select.int(select_3, 0, 1);  select_3 = select_4 = None
     return clone
     """)
@@ -228,8 +225,7 @@ def forward(self, a__1):
 
 def forward(self, a__1):
     clone = torch.ops.aten.clone.default(a__1);  a__1 = None
-    slice_1 = torch.ops.aten.slice.Tensor(clone, 0, 0, 9223372036854775807)
-    select = torch.ops.aten.select.int(slice_1, 1, 1);  slice_1 = None
+    select = torch.ops.aten.select.int(clone, 1, 1)
     select_1 = torch.ops.aten.select.int(select, 0, 1);  select = None
     add = torch.ops.aten.add_.Tensor(select_1, 1);  select_1 = add = None
     as_strided = torch.ops.aten.as_strided.default(clone, [4], [4], 1);  clone = None
@@ -264,8 +260,7 @@ def forward(self, a__1):
 
 def forward(self, a__1):
     clone = torch.ops.aten.clone.default(a__1);  a__1 = None
-    slice_1 = torch.ops.aten.slice.Tensor(clone, 0, 0, 9223372036854775807)
-    select = torch.ops.aten.select.int(slice_1, 1, 1);  slice_1 = None
+    select = torch.ops.aten.select.int(clone, 1, 1)
     select_1 = torch.ops.aten.select.int(select, 0, 1);  select = None
     add = torch.ops.aten.add.Tensor(select_1, 1);  select_1 = None
     as_strided = torch.ops.aten.as_strided.default(clone, [4], [4], 1);  clone = None
@@ -297,8 +292,7 @@ def forward(self, a__1):
 
 def forward(self, a__1):
     clone = torch.ops.aten.clone.default(a__1);  a__1 = None
-    slice_1 = torch.ops.aten.slice.Tensor(clone, 0, 0, 9223372036854775807)
-    select = torch.ops.aten.select.int(slice_1, 1, 1);  slice_1 = None
+    select = torch.ops.aten.select.int(clone, 1, 1)
     select_1 = torch.ops.aten.select.int(select, 0, 1);  select = None
     add = torch.ops.aten.add.Tensor(select_1, 1);  select_1 = None
     as_strided = torch.ops.aten.as_strided.default(clone, [4], [4], 0);  clone = None
