@@ -43,7 +43,7 @@ aten = torch.ops.aten
 def propagate_single_input_strategy(op_schema: OpSchema) -> StrategyType:
     # For ops with a single tensor input, we perform a 1:1 mapping such that
     # for each strategy that the input supports, we create a corresponding strategy.
-    # Note: this may be a complete waste of work, becuase it should be equivalent to
+    # Note: this may be a complete waste of work, because it should be equivalent to
     # `return first_input_strategy` (unless creating a deep copy is important for some reason)
     assert len([s for s in op_schema.args_schema if isinstance(s, OpStrategy)]) == 1, (
         "propagate_single_input_strategy only works for single-tensor-input ops"
@@ -1209,18 +1209,14 @@ def clamp_strategy(op_schema: OpSchema) -> OpStrategy:
                 # this case input and min/max tensor can follow each other's placement
                 is_same_shape_tensor = True
             else:
-                # case 2. min/max are scalar tensor with scalar
+                # case 2. min/max are scalar tensor
                 is_scalar_tensor = True
     is_value = not is_same_shape_tensor and not is_scalar_tensor
 
     all_strategy = OpStrategy([])
     if is_value:
         # min/max are value, no input strategies from them
-
-        # TODO: Update to propagate_single_input_strategy once
-        # https://github.com/pytorch/pytorch/pull/158490 merged
-        return cast(OpStrategy, default_strategy(op_schema))
-
+        return cast(OpStrategy, propagate_single_input_strategy(op_schema))
     elif (
         is_scalar_tensor
     ):  # input and min/max tensor shape mismatch, and min/max are single value tensor
