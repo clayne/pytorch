@@ -812,7 +812,7 @@ class DistTensorOpsTest(DTensorTestBase):
                     if max_placement.is_shard():
                         if not is_tensor_shardable(max.shape, spec):
                             continue
-                    max_dt = distribute_tensor(min, mesh, [max_placement])
+                    max_dt = distribute_tensor(max, mesh, [max_placement])
                 else:
                     if max_placement.is_shard():
                         continue
