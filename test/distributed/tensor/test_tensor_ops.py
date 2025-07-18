@@ -799,7 +799,7 @@ class DistTensorOpsTest(DTensorTestBase):
             for min, max in zip(min_choice, max_choice):
                 min_dt, max_dt = min, max
                 if isinstance(min, torch.Tensor):
-                    spec = DTensorSpec(mesh, tuple(min_placement))
+                    spec = DTensorSpec(mesh, (min_placement,))
                     if min_placement.is_shard():
                         if not is_tensor_shardable(min.shape, spec):
                             continue
@@ -808,7 +808,7 @@ class DistTensorOpsTest(DTensorTestBase):
                     if min_placement.is_shard():
                         continue
                 if isinstance(max, torch.Tensor):
-                    spec = DTensorSpec(mesh, tuple(max_placement))
+                    spec = DTensorSpec(mesh, (max_placement,))
                     if max_placement.is_shard():
                         if not is_tensor_shardable(max.shape, spec):
                             continue

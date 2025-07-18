@@ -1173,12 +1173,15 @@ def split_strategy(op_schema: OpSchema) -> OpStrategy:
         aten.clamp.Tensor,
         aten.clamp.out,
         aten.clamp_.default,
+        aten.clamp_.Tensor,
         aten.clamp_min.default,
         aten.clamp_min.Tensor,
         aten.clamp_min_.default,
+        aten.clamp_min_.Tensor,
         aten.clamp_max.default,
         aten.clamp_max.Tensor,
         aten.clamp_max_.default,
+        aten.clamp_max_.Tensor,
     ],
 )
 def clamp_strategy(op_schema: OpSchema) -> OpStrategy:
